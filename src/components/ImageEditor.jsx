@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
-import { X, Check, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { X, Check, ChevronLeft, ChevronRight, RefreshCw, Settings, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function ImageEditor({
     image,
@@ -23,6 +24,7 @@ export function ImageEditor({
     const [positionY, setPositionY] = useState(0);
     const [isUpdatingFromCropper, setIsUpdatingFromCropper] = useState(false);
     const [isCropperReady, setIsCropperReady] = useState(false);
+    const [showMobileSettings, setShowMobileSettings] = useState(false);
 
     // Sync crop data from Cropper to our state
     const syncFromCropper = useCallback(() => {
@@ -52,7 +54,7 @@ export function ImageEditor({
         }
     }, [image.id, onSave, isCropperReady]);
 
-    // Handle width input change
+    // Handle width input change - NO RESTRICTIONS
     const handleWidthChange = (value) => {
         const newWidth = parseInt(value) || 0;
         setCropWidth(newWidth);
@@ -78,7 +80,7 @@ export function ImageEditor({
         }
     };
 
-    // Handle height input change
+    // Handle height input change - NO RESTRICTIONS
     const handleHeightChange = (value) => {
         const newHeight = parseInt(value) || 0;
         setCropHeight(newHeight);
@@ -147,12 +149,10 @@ export function ImageEditor({
         if (cropperRef.current) {
             const cropper = cropperRef.current.cropper;
 
-            // If image has saved crop data, restore it
             if (image.cropData) {
                 cropper.setData(image.cropData);
             }
 
-            // Sync UI state from cropper
             setTimeout(() => {
                 const data = cropper.getData(true);
                 setCropWidth(Math.round(data.width));
@@ -163,7 +163,6 @@ export function ImageEditor({
         }
     }, [image.cropData]);
 
-    // Reset ready state when image changes
     useEffect(() => {
         setIsCropperReady(false);
     }, [image.id]);
@@ -172,7 +171,6 @@ export function ImageEditor({
         syncFromCropper();
     }, [syncFromCropper]);
 
-    // All close/navigation actions auto-save first
     const handleClose = () => {
         saveCurrentState();
         onClose();
@@ -195,92 +193,93 @@ export function ImageEditor({
         }
     };
 
+    // Settings Panel Content (shared between desktop sidebar and mobile drawer)
+    const SettingsContent = () => (
+        <>
+            {/* Width / Height */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">Width</label>
+                    <input
+                        type="number"
+                        min="1"
+                        value={cropWidth}
+                        onChange={(e) => handleWidthChange(e.target.value)}
+                        className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">Height</label>
+                    <input
+                        type="number"
+                        min="1"
+                        value={cropHeight}
+                        onChange={(e) => handleHeightChange(e.target.value)}
+                        className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                </div>
+            </div>
+
+            {/* Aspect Ratio Display */}
+            <div className="mb-5 p-3 bg-secondary/50 rounded-lg border border-border">
+                <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Aspect Ratio</span>
+                    <span className="font-medium">{aspectRatioLabel || 'Freeform'}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm mt-2">
+                    <span className="text-muted-foreground">Orientation</span>
+                    <span className="font-medium capitalize">{orientation || 'Portrait'}</span>
+                </div>
+            </div>
+
+            {/* Crop Position */}
+            <div className="mb-5">
+                <h4 className="text-sm font-medium mb-3">Crop Position</h4>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground">Position (X)</label>
+                        <input
+                            type="number"
+                            value={positionX}
+                            onChange={(e) => handlePositionXChange(e.target.value)}
+                            className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground">Position (Y)</label>
+                        <input
+                            type="number"
+                            value={positionY}
+                            onChange={(e) => handlePositionYChange(e.target.value)}
+                            className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Reset Button */}
+            <button
+                onClick={handleReset}
+                className="w-full py-2.5 bg-secondary border border-border rounded-lg text-sm font-medium hover:bg-secondary/80 flex items-center justify-center gap-2 transition-colors"
+            >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reset
+            </button>
+        </>
+    );
+
     return (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col md:flex-row">
 
-            {/* Top Bar (Mobile) */}
-            <div className="flex md:hidden items-center justify-between p-4 text-white z-10">
-                <button onClick={handleClose}><X /></button>
-                <span className="font-semibold">Edit Image</span>
-                <button onClick={handleClose} className="text-primary"><Check /></button>
-            </div>
-
-            {/* LEFT Sidebar Controls */}
-            <div className="order-2 md:order-1 w-full md:w-72 bg-card border-r border-border p-5 flex flex-col gap-5 h-auto md:h-full overflow-y-auto text-foreground z-20">
-
+            {/* Desktop LEFT Sidebar - Hidden on Mobile */}
+            <div className="hidden md:flex order-1 w-72 bg-card border-r border-border p-5 flex-col gap-5 h-full overflow-y-auto text-foreground z-20">
                 <div className="h-full flex flex-col">
-                    <div className="hidden md:flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-lg">Crop Rectangle</h3>
                         <button onClick={handleClose} className="p-2 hover:bg-secondary rounded-full"><X className="w-5 h-5" /></button>
                     </div>
 
-                    {/* Width / Height */}
-                    <div className="grid grid-cols-2 gap-3 mb-5">
-                        <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground">Width</label>
-                            <input
-                                type="number"
-                                value={cropWidth}
-                                onChange={(e) => handleWidthChange(e.target.value)}
-                                className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground">Height</label>
-                            <input
-                                type="number"
-                                value={cropHeight}
-                                onChange={(e) => handleHeightChange(e.target.value)}
-                                className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Aspect Ratio Display */}
-                    <div className="mb-5 p-3 bg-secondary/50 rounded-lg border border-border">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-muted-foreground">Aspect Ratio</span>
-                            <span className="font-medium">{aspectRatioLabel || 'Freeform'}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm mt-2">
-                            <span className="text-muted-foreground">Orientation</span>
-                            <span className="font-medium capitalize">{orientation || 'Portrait'}</span>
-                        </div>
-                    </div>
-
-                    {/* Crop Position */}
-                    <div className="mb-5">
-                        <h4 className="text-sm font-medium mb-3">Crop Position</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="text-xs text-muted-foreground">Position (X)</label>
-                                <input
-                                    type="number"
-                                    value={positionX}
-                                    onChange={(e) => handlePositionXChange(e.target.value)}
-                                    className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs text-muted-foreground">Position (Y)</label>
-                                <input
-                                    type="number"
-                                    value={positionY}
-                                    onChange={(e) => handlePositionYChange(e.target.value)}
-                                    className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Reset Button */}
-                    <button
-                        onClick={handleReset}
-                        className="w-full py-2.5 bg-secondary border border-border rounded-lg text-sm font-medium hover:bg-secondary/80 flex items-center justify-center gap-2 transition-colors"
-                    >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Reset
-                    </button>
+                    <SettingsContent />
 
                     <div className="mt-auto pt-6 border-t border-border">
                         <button
@@ -290,30 +289,12 @@ export function ImageEditor({
                             <Check className="w-4 h-4" />
                             {hasNext ? 'Save & Next' : 'Save & Close'}
                         </button>
-
-                        {/* Mobile Nav helper */}
-                        <div className="flex md:hidden gap-2 mt-4">
-                            <button
-                                disabled={!hasPrev}
-                                onClick={handlePrev}
-                                className="flex-1 py-3 bg-secondary text-secondary-foreground font-medium rounded-lg disabled:opacity-50"
-                            >
-                                Previous
-                            </button>
-                            <button
-                                disabled={!hasNext}
-                                onClick={handleNext}
-                                className="flex-1 py-3 bg-secondary text-secondary-foreground font-medium rounded-lg disabled:opacity-50"
-                            >
-                                Next
-                            </button>
-                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Main Image Area (RIGHT) */}
-            <div className="order-1 md:order-2 flex-1 relative h-[60vh] md:h-full w-full bg-slate-900 flex items-center justify-center p-4">
+            {/* Main Image Area */}
+            <div className="order-2 flex-1 relative h-full w-full bg-slate-900 flex items-center justify-center">
                 <Cropper
                     key={image.id}
                     src={image.originalUrl}
@@ -330,13 +311,13 @@ export function ImageEditor({
                     rotatable={false}
                     scalable={true}
                     zoomable={true}
-                    minCropBoxWidth={50}
-                    minCropBoxHeight={50}
+                    minCropBoxWidth={10}
+                    minCropBoxHeight={10}
                     ready={handleReady}
                     crop={handleCrop}
                 />
 
-                {/* Navigation Arrows (Desktop overlay) */}
+                {/* Desktop Navigation Arrows */}
                 <div className="hidden md:flex absolute inset-0 items-center justify-between px-4 pointer-events-none">
                     <button
                         onClick={handlePrev}
@@ -355,8 +336,101 @@ export function ImageEditor({
                         <ChevronRight className="w-8 h-8" />
                     </button>
                 </div>
+
+                {/* Mobile Top Bar */}
+                <div className="md:hidden absolute top-0 left-0 right-0 flex items-center justify-between p-3 bg-gradient-to-b from-black/80 to-transparent z-10">
+                    <button onClick={handleClose} className="p-2 text-white"><X className="w-6 h-6" /></button>
+                    <span className="font-semibold text-white">Edit Image</span>
+                    <button onClick={hasNext ? handleNext : handleClose} className="p-2 text-primary"><Check className="w-6 h-6" /></button>
+                </div>
+
+                {/* Mobile Bottom Bar */}
+                <div className="md:hidden absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent z-10 flex items-center justify-between">
+                    <button
+                        disabled={!hasPrev}
+                        onClick={handlePrev}
+                        className="p-3 bg-white/10 backdrop-blur rounded-full disabled:opacity-30"
+                    >
+                        <ChevronLeft className="w-5 h-5 text-white" />
+                    </button>
+
+                    <button
+                        onClick={() => setShowMobileSettings(true)}
+                        className="px-6 py-3 bg-white/10 backdrop-blur rounded-full flex items-center gap-2 text-white font-medium"
+                    >
+                        <Settings className="w-4 h-4" />
+                        Settings
+                    </button>
+
+                    <button
+                        disabled={!hasNext}
+                        onClick={handleNext}
+                        className="p-3 bg-white/10 backdrop-blur rounded-full disabled:opacity-30"
+                    >
+                        <ChevronRight className="w-5 h-5 text-white" />
+                    </button>
+                </div>
             </div>
 
+            {/* Mobile Settings Drawer - Slides up */}
+            <AnimatePresence>
+                {showMobileSettings && (
+                    <>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowMobileSettings(false)}
+                            className="md:hidden fixed inset-0 bg-black/50 z-30"
+                        />
+
+                        {/* Drawer */}
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            className="md:hidden fixed bottom-0 left-0 right-0 bg-card rounded-t-2xl z-40 max-h-[80vh] overflow-y-auto"
+                        >
+                            {/* Handle */}
+                            <div className="flex justify-center py-3">
+                                <div className="w-12 h-1 bg-border rounded-full" />
+                            </div>
+
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-5 pb-4 border-b border-border">
+                                <h3 className="font-semibold text-lg">Crop Settings</h3>
+                                <button
+                                    onClick={() => setShowMobileSettings(false)}
+                                    className="p-2 hover:bg-secondary rounded-full"
+                                >
+                                    <ChevronDown className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-5">
+                                <SettingsContent />
+
+                                <div className="mt-6">
+                                    <button
+                                        onClick={() => {
+                                            setShowMobileSettings(false);
+                                            if (hasNext) handleNext();
+                                            else handleClose();
+                                        }}
+                                        className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 flex items-center justify-center gap-2"
+                                    >
+                                        <Check className="w-4 h-4" />
+                                        {hasNext ? 'Save & Next' : 'Save & Close'}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

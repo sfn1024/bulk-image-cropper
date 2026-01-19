@@ -1,16 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Settings, X, LayoutTemplate } from 'lucide-react';
 import { SidebarControls } from './components/SidebarControls';
 import { ImageGrid } from './components/ImageGrid';
 import { ImageUploader } from './components/ImageUploader';
 import { ImageEditor } from './components/ImageEditor';
-
-// We don't need getCroppedImg utils anymore since CropperJS handles it, 
-// BUT for batch export we might need to instantiate a hidden cropper or use canvas logic.
-// Actually, CropperJS has a "getCroppedCanvas" method but that requires the DOM element.
-// For bulk export without opening every image, we need to replicate the crop logic on a canvas
-// using the stored 'cropData' (x, y, width, height, rotate).
 
 function App() {
   const [images, setImages] = useState([]);
@@ -18,20 +14,19 @@ function App() {
   const [orientation, setOrientation] = useState('portrait');
   const [editingImageId, setEditingImageId] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   // Parse Aspect Ratio
   const currentAspectRatioValue = useMemo(() => {
     if (aspectRatio === 'free') return null;
     const [w, h] = aspectRatio.split('/').map(Number);
-    // Adjust for orientation
     if (orientation === 'landscape') {
       const ratio = w / h;
-      if (ratio < 1) return 1 / ratio; // Make it landscape (>1)
+      if (ratio < 1) return 1 / ratio;
       return ratio;
     } else {
-      // Portrait
       const ratio = w / h;
-      if (ratio > 1) return 1 / ratio; // Make it portrait (<1)
+      if (ratio > 1) return 1 / ratio;
       return ratio;
     }
   }, [aspectRatio, orientation]);
@@ -42,7 +37,7 @@ function App() {
       file,
       originalUrl: URL.createObjectURL(file),
       previewUrl: null,
-      cropData: null, // CropperJS data
+      cropData: null,
     }));
     setImages(prev => [...prev, ...newImages]);
   };
@@ -58,7 +53,6 @@ function App() {
     }));
   };
 
-  // Helper to crop image using canvas API based on CropperJS data
   const cropImageOnCanvas = (imageUrl, cropData) => {
     return new Promise((resolve, reject) => {
       const image = new Image();
@@ -67,54 +61,10 @@ function App() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
-        const { x, y, width, height, rotate } = cropData;
-
-        // This is a basic implementation. 
-        // CropperJS logic is complex for rotation. 
-        // To ensure 100% accuracy with what the user saw, we ideally use a library or basic canvas transforms.
-        // Since we are not mounting the component, we do manual canvas ops.
-
-        // Note: 'cropData' from CropperJS is usually based on natural image dimensions if checkOrientation is false.
+        const { x, y, width, height } = cropData;
 
         canvas.width = width;
         canvas.height = height;
-
-        // If rotated, we need to translate/rotate context
-        // BUT CropperJS 'x/y' are based on the original image space usually?
-        // Actually, simplified approach:
-        // For bulk export, if we want to be safe, we can limit to just non-rotated for now OR try best effort.
-        // With react-cropper, the 'cropData' (getData()) returns values relative to original image.
-
-        // Simple crop (no rotation support in this helper for brevity unless we implement full transform):
-        if (rotate !== 0) {
-          // Rotation support is tricky without using the library's internal logic.
-          // For now, let's assume if they rotated, they opened the editor.
-          // If they opened the editor, we could have saved the blob immediately? 
-          // No, memory issues. 
-          // Let's implement basic rotation support.
-
-          // Valid way: Draw image to canvas with rotation, then slice.
-          // BUT cropping with rotation means the bounding box changes.
-          // cropData.width/height is the output size.
-        }
-
-        // Let's rely on a visual approximation for now or standard crop. 
-        // Since we can't easily invoke CropperJS methods without the DOM.
-
-        // WORKAROUND: For this MVP, we will assume standard crop. 
-        // If rotation is critical for export, we might need to mount hidden instances.
-        // OR we use the 'previewUrl' if it's high enough quality? (Usually not).
-
-        // Better Path: Use the 'cropperjs' library logic if possible, or just standard canvas draw.
-
-        canvas.width = width;
-        canvas.height = height;
-
-        // We need to handle the rotation context if present
-        if (rotate) {
-          // Complex rotation logic omitted for safety in MVP unless requested.
-          // Defaulting to simple crop.
-        }
 
         ctx.drawImage(
           image,
@@ -142,12 +92,8 @@ function App() {
         let blob = null;
 
         if (img.cropData) {
-          // Use the crop data
           blob = await cropImageOnCanvas(img.originalUrl, img.cropData);
         } else {
-          // If no manual crop, check if we need to apply global Aspect Ratio?
-          // Current logic: If user didn't touch it, export original.
-          // Ideally we'd auto-crop to center, but that requires loading every image to know dimensions.
           blob = img.file;
         }
 
@@ -168,19 +114,82 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden font-sans selection:bg-primary/20">
+    <div className="flex flex-col md:flex-row h-screen w-full bg-background text-foreground overflow-hidden font-sans selection:bg-primary/20">
 
-      <SidebarControls
-        aspectRatio={aspectRatio}
-        setAspectRatio={setAspectRatio}
-        orientation={orientation}
-        setOrientation={setOrientation}
-        onUpload={() => document.getElementById('hidden-upload-input')?.click()}
-        onExport={handleExport}
-        isExporting={isExporting}
-        onRemoveAll={() => setImages([])}
-        imageCount={images.length}
-      />
+      {/* Desktop Sidebar - Hidden on Mobile */}
+      <div className="hidden md:block">
+        <SidebarControls
+          aspectRatio={aspectRatio}
+          setAspectRatio={setAspectRatio}
+          orientation={orientation}
+          setOrientation={setOrientation}
+          onUpload={() => document.getElementById('hidden-upload-input')?.click()}
+          onExport={handleExport}
+          isExporting={isExporting}
+          onRemoveAll={() => setImages([])}
+          imageCount={images.length}
+        />
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      <AnimatePresence>
+        {showMobileSidebar && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMobileSidebar(false)}
+              className="md:hidden fixed inset-0 bg-black/50 z-40"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="md:hidden fixed bottom-0 left-0 right-0 bg-card rounded-t-2xl z-50 max-h-[85vh] overflow-y-auto"
+            >
+              {/* Handle */}
+              <div className="flex justify-center py-3">
+                <div className="w-12 h-1 bg-border rounded-full" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pb-3 border-b border-border">
+                <h3 className="font-semibold text-lg">Settings</h3>
+                <button
+                  onClick={() => setShowMobileSidebar(false)}
+                  className="p-2 hover:bg-secondary rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Mobile Sidebar Content */}
+              <div className="p-5">
+                <SidebarControls
+                  aspectRatio={aspectRatio}
+                  setAspectRatio={setAspectRatio}
+                  orientation={orientation}
+                  setOrientation={setOrientation}
+                  onUpload={() => {
+                    setShowMobileSidebar(false);
+                    document.getElementById('hidden-upload-input')?.click();
+                  }}
+                  onExport={() => {
+                    setShowMobileSidebar(false);
+                    handleExport();
+                  }}
+                  isExporting={isExporting}
+                  onRemoveAll={() => setImages([])}
+                  imageCount={images.length}
+                  isMobile={true}
+                />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       <input
         id="hidden-upload-input"
@@ -192,14 +201,44 @@ function App() {
       />
 
       <main className="flex-1 flex flex-col relative h-[100dvh]">
+        {/* Mobile Header - Only visible on mobile */}
+        <div className="md:hidden flex items-center gap-2 p-4 border-b border-border bg-card">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <LayoutTemplate className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight">BulkCrop</h1>
+        </div>
+
         {images.length === 0 ? (
           <ImageUploader onUpload={handleUpload} hasImages={false} />
         ) : (
-          <ImageGrid
-            images={images}
-            onRemove={(id) => setImages(prev => prev.filter(img => img.id !== id))}
-            onEdit={(id) => setEditingImageId(id)}
-          />
+          <>
+            <ImageGrid
+              images={images}
+              onRemove={(id) => setImages(prev => prev.filter(img => img.id !== id))}
+              onEdit={(id) => setEditingImageId(id)}
+            />
+
+            {/* Mobile Bottom Bar with Settings Button */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent z-30">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowMobileSidebar(true)}
+                  className="flex-1 py-3 bg-secondary text-secondary-foreground font-medium rounded-lg flex items-center justify-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </button>
+                <button
+                  onClick={handleExport}
+                  disabled={isExporting || images.length === 0}
+                  className="flex-1 py-3 bg-primary text-primary-foreground font-semibold rounded-lg disabled:opacity-50"
+                >
+                  {isExporting ? 'Processing...' : 'Download All'}
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </main>
 
